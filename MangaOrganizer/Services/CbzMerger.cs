@@ -22,7 +22,9 @@ public static class CbzMerger
         foreach (var file in group.Files)
         {
             using var zip = ZipFile.OpenRead(file.FilePath);
-            foreach (var entry in zip.Entries.Where(e => IsImage(e.Name)).OrderBy(e => e.Name))
+            foreach (var entry in zip.Entries
+                .Where(e => IsImage(e.Name) && e.FullName != file.SuspectedAdEntry)
+                .OrderBy(e => e.Name))
                 allEntries.Add((file.FilePath, entry.FullName));
         }
 
@@ -40,7 +42,7 @@ public static class CbzMerger
 
             using var inputZip = ZipFile.OpenRead(file.FilePath);
             var imageEntries = inputZip.Entries
-                .Where(e => IsImage(e.Name))
+                .Where(e => IsImage(e.Name) && e.FullName != file.SuspectedAdEntry)
                 .OrderBy(e => e.Name)
                 .ToList();
 

@@ -87,6 +87,9 @@ public partial class MainWindow : Window
         string folderName = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
         _parsedFiles = cbzFiles.Select(f => FileParser.Parse(f, folderName)).ToList();
 
+        foreach (var file in _parsedFiles)
+            file.SuspectedAdEntry = AdDetector.FindSuspectedAd(file.FilePath);
+
         RefreshGroups();
     }
 
@@ -115,7 +118,11 @@ public partial class MainWindow : Window
         BuildTree();
 
         MergeButton.IsEnabled = _groups.Count > 0;
-        StatusLabel.Text = $"Ready — {_groups.Count} group{(_groups.Count == 1 ? "" : "s")} to merge";
+        int adCount = _parsedFiles.Count(f => f.SuspectedAdEntry is not null);
+        string adNote = adCount > 0
+            ? $" — ⚠ {adCount} suspected ad image{(adCount == 1 ? "" : "s")} will be skipped"
+            : "";
+        StatusLabel.Text = $"Ready — {_groups.Count} group{(_groups.Count == 1 ? "" : "s")} to merge{adNote}";
     }
 
     private int GetChaptersPerGroup()
@@ -225,6 +232,14 @@ public partial class MainWindow : Window
             Foreground = (SolidColorBrush)Application.Current.FindResource("TextSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center
         });
+        if (file.SuspectedAdEntry is not null)
+            panel.Children.Add(new TextBlock
+            {
+                Text = "  ⚠ ad skipped",
+                FontSize = 11,
+                Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)),
+                VerticalAlignment = VerticalAlignment.Center
+            });
         return panel;
     }
 

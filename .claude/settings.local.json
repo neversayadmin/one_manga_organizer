@@ -1,7 +1,10 @@
 {
   "permissions": {
     "allow": [
-      "Bash(dotnet build *)"
+      "Bash(dotnet build *)",
+      "Bash(ls \"D:\\\\torrent\\\\manga\\\\Spy x Family\" | head -30)",
+      "Read(//d/torrent/manga/Spy x Family/**)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }
