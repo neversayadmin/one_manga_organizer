@@ -141,6 +141,16 @@
                               Margin="16,0,0,0"
                               Checked="MergeAllInOne_Changed"
                               Unchecked="MergeAllInOne_Changed"/>
+
+                    <CheckBox x:Name="SkipAdsCheck"
+                              Content="Skip detected ads"
+                              IsChecked="True"
+                              FontSize="12"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              VerticalAlignment="Center"
+                              Margin="16,0,0,0"
+                              Checked="SkipAds_Changed"
+                              Unchecked="SkipAds_Changed"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -162,18 +172,15 @@
                            FontSize="10" FontWeight="Bold"
                            Foreground="{StaticResource TextSecondaryBrush}"/>
 
-                <ScrollViewer Grid.Row="2"
-                              VerticalScrollBarVisibility="Auto"
-                              HorizontalScrollBarVisibility="Disabled">
-                    <TreeView x:Name="GroupsTree"
-                              VirtualizingStackPanel.IsVirtualizing="True">
-                        <TreeView.Resources>
-                            <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
-                                <Setter Property="IsExpanded" Value="True"/>
-                            </Style>
-                        </TreeView.Resources>
-                    </TreeView>
-                </ScrollViewer>
+                <TreeView x:Name="GroupsTree"
+                          Grid.Row="2"
+                          VirtualizingStackPanel.IsVirtualizing="True">
+                    <TreeView.Resources>
+                        <Style TargetType="TreeViewItem" BasedOn="{StaticResource {x:Type TreeViewItem}}">
+                            <Setter Property="IsExpanded" Value="True"/>
+                        </Style>
+                    </TreeView.Resources>
+                </TreeView>
 
                 <!-- Empty state -->
                 <StackPanel x:Name="EmptyState"

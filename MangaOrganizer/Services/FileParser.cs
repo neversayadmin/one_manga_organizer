@@ -79,7 +79,7 @@ public static class FileParser
                     return new MergeGroup
                     {
                         OutputName = SanitizeName(outputName),
-                        Files = [.. g.OrderBy(f => f.Chapter ?? 0).ThenBy(f => f.FileName)]
+                        Files = [.. g.OrderBy(f => f.Chapter ?? 0).ThenBy(f => f.FileName, NaturalComparer.Instance)]
                     };
                 })
                 .ToList();
@@ -90,7 +90,7 @@ public static class FileParser
         {
             var sorted = files
                 .OrderBy(f => f.Chapter ?? double.MaxValue)
-                .ThenBy(f => f.FileName)
+                .ThenBy(f => f.FileName, NaturalComparer.Instance)
                 .ToList();
 
             var groups = new List<MergeGroup>();

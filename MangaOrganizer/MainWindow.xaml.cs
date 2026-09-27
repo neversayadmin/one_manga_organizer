@@ -1,8 +1,10 @@
 using System.IO;
+using System.IO.Compression;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MangaOrganizer.Models;
 using MangaOrganizer.Services;
 
@@ -14,6 +16,10 @@ public partial class MainWindow : Window
     private List<MergeGroup> _groups = [];
     private GroupMode _mode = GroupMode.ByVolume;
     private CancellationTokenSource? _cts;
+
+    private static readonly string LastFolderFile = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+        "MangaOrganizer", "last_folder.txt");
 
     public MainWindow()
     {
@@ -29,6 +35,7 @@ public partial class MainWindow : Window
                 OutputFolderBox.Text = Path.Combine(src, "Merged");
             }
         };
+        LoadLastFolder();
     }
 
     // ── Folder Browse ────────────────────────────────────────────────
@@ -65,7 +72,7 @@ public partial class MainWindow : Window
 
     // ── Scan ─────────────────────────────────────────────────────────
 
-    private void Scan_Click(object sender, RoutedEventArgs e)
+    private async void Scan_Click(object sender, RoutedEventArgs e)
     {
         string folder = SourceFolderBox.Text.Trim();
         if (!Directory.Exists(folder))
@@ -75,7 +82,7 @@ public partial class MainWindow : Window
         }
 
         var cbzFiles = Directory.GetFiles(folder, "*.cbz", SearchOption.TopDirectoryOnly)
-                                .OrderBy(f => f)
+                                .Order(NaturalComparer.Instance)
                                 .ToList();
 
         if (cbzFiles.Count == 0)
@@ -85,12 +92,48 @@ public partial class MainWindow : Window
         }
 
         string folderName = Path.GetFileName(folder.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-        _parsedFiles = cbzFiles.Select(f => FileParser.Parse(f, folderName)).ToList();
 
-        foreach (var file in _parsedFiles)
-            file.SuspectedAdEntry = AdDetector.FindSuspectedAd(file.FilePath);
+        SetScanningState(true);
 
+        var scanProgress = new Progress<(int Current, int Total)>(p =>
+        {
+            ProgressBar.Value = (double)p.Current / p.Total * 100;
+            StatusLabel.Text = $"Scanning {p.Current}/{p.Total}…";
+        });
+
+        _parsedFiles = await Task.Run(() =>
+        {
+            var results = new List<MangaFile>(cbzFiles.Count);
+            for (int i = 0; i < cbzFiles.Count; i++)
+            {
+                var file = FileParser.Parse(cbzFiles[i], folderName);
+                file.SuspectedAdEntries = AdDetector.FindSuspectedAds(cbzFiles[i]);
+                results.Add(file);
+                ((IProgress<(int, int)>)scanProgress).Report((i + 1, cbzFiles.Count));
+            }
+            return results;
+        });
+
+        SaveLastFolder(folder);
+        SetScanningState(false);
         RefreshGroups();
+    }
+
+    private void SetScanningState(bool scanning)
+    {
+        ScanButton.IsEnabled = !scanning;
+        ScanButton.Content = scanning ? "Scanning…" : "Scan";
+        MergeButton.IsEnabled = !scanning && _groups.Count > 0;
+        BrowseSource_IsEnabled(!scanning);
+        if (scanning)
+        {
+            ProgressBar.Value = 0;
+            StatusLabel.Text = "Scanning…";
+        }
+        else
+        {
+            ProgressBar.Value = 0;
+        }
     }
 
     private void RefreshGroups()
@@ -109,7 +152,7 @@ public partial class MainWindow : Window
                     Files = [.. _parsedFiles
                         .OrderBy(f => f.Volume ?? 0)
                         .ThenBy(f => f.Chapter ?? 0)
-                        .ThenBy(f => f.FileName)]
+                        .ThenBy(f => f.FileName, NaturalComparer.Instance)]
                 }
             ];
         }
@@ -118,11 +161,7 @@ public partial class MainWindow : Window
         BuildTree();
 
         MergeButton.IsEnabled = _groups.Count > 0;
-        int adCount = _parsedFiles.Count(f => f.SuspectedAdEntry is not null);
-        string adNote = adCount > 0
-            ? $" — ⚠ {adCount} suspected ad image{(adCount == 1 ? "" : "s")} will be skipped"
-            : "";
-        StatusLabel.Text = $"Ready — {_groups.Count} group{(_groups.Count == 1 ? "" : "s")} to merge{adNote}";
+        RefreshAdStatus();
     }
 
     private int GetChaptersPerGroup()
@@ -177,11 +216,13 @@ public partial class MainWindow : Window
 
             foreach (var file in group.Files)
             {
-                groupItem.Items.Add(new TreeViewItem
+                var fileItem = new TreeViewItem
                 {
                     Header = CreateFileHeader(file),
-                    IsEnabled = false
-                });
+                    Focusable = false,
+                };
+                fileItem.Selected += (_, _) => fileItem.IsSelected = false;
+                groupItem.Items.Add(fileItem);
             }
 
             GroupsTree.Items.Add(groupItem);
@@ -215,7 +256,7 @@ public partial class MainWindow : Window
         return panel;
     }
 
-    private static UIElement CreateFileHeader(MangaFile file)
+    private UIElement CreateFileHeader(MangaFile file)
     {
         var panel = new StackPanel { Orientation = Orientation.Horizontal };
         panel.Children.Add(new TextBlock
@@ -232,15 +273,116 @@ public partial class MainWindow : Window
             Foreground = (SolidColorBrush)Application.Current.FindResource("TextSecondaryBrush"),
             VerticalAlignment = VerticalAlignment.Center
         });
-        if (file.SuspectedAdEntry is not null)
+
+        if (SkipAdsCheck.IsChecked == true && file.SuspectedAdEntries.Count > 0)
+        {
+            int n = file.SuspectedAdEntries.Count;
             panel.Children.Add(new TextBlock
             {
-                Text = "  ⚠ ad skipped",
+                Text = $"  ⚠ {n} ad{(n == 1 ? "" : "s")} skipped",
                 FontSize = 11,
                 Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)),
                 VerticalAlignment = VerticalAlignment.Center
             });
+
+            foreach (var entryFullName in file.SuspectedAdEntries)
+                panel.Children.Add(CreateEyeButton(file, entryFullName));
+        }
+
         return panel;
+    }
+
+    private UIElement CreateEyeButton(MangaFile file, string entryFullName)
+    {
+        // Lazy-load image preview tooltip
+        var previewImg = new Image { MaxHeight = 420, MaxWidth = 280, Stretch = Stretch.Uniform };
+        var tooltip = new ToolTip
+        {
+            Background = (SolidColorBrush)Application.Current.FindResource("SurfaceBrush"),
+            BorderBrush = (SolidColorBrush)Application.Current.FindResource("BorderBrush"),
+            Content = new StackPanel
+            {
+                Margin = new Thickness(6),
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = $"{Path.GetFileName(entryFullName)}  —  click 👁 to keep this image",
+                        FontSize = 10,
+                        Foreground = (SolidColorBrush)Application.Current.FindResource("TextSecondaryBrush"),
+                        Margin = new Thickness(0, 0, 0, 6),
+                    },
+                    previewImg
+                }
+            }
+        };
+
+        bool imageLoaded = false;
+        tooltip.Opened += async (_, _) =>
+        {
+            if (imageLoaded) return;
+            imageLoaded = true;
+            previewImg.Source = await Task.Run(() => LoadPreviewImage(file.FilePath, entryFullName));
+        };
+
+        var eye = new TextBlock
+        {
+            Text = " 👁",
+            FontSize = 12,
+            Cursor = Cursors.Hand,
+            VerticalAlignment = VerticalAlignment.Center,
+            Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xC1, 0x07)),
+        };
+        ToolTipService.SetToolTip(eye, tooltip);
+        ToolTipService.SetShowDuration(eye, 12000);
+
+        eye.MouseLeftButtonDown += (_, e) =>
+        {
+            e.Handled = true;
+            file.SuspectedAdEntries.Remove(entryFullName);
+            RefreshAdStatus();
+            BuildTree();
+        };
+
+        return eye;
+    }
+
+    private static BitmapImage? LoadPreviewImage(string cbzPath, string entryFullName)
+    {
+        try
+        {
+            using var zip = ZipFile.OpenRead(cbzPath);
+            var entry = zip.GetEntry(entryFullName);
+            if (entry is null) return null;
+
+            var ms = new MemoryStream();
+            using (var s = entry.Open())
+                s.CopyTo(ms);
+            ms.Position = 0;
+
+            var bmp = new BitmapImage();
+            bmp.BeginInit();
+            bmp.StreamSource = ms;
+            bmp.DecodePixelHeight = 420;
+            bmp.CacheOption = BitmapCacheOption.OnLoad;
+            bmp.EndInit();
+            ms.Dispose();
+            bmp.Freeze();
+            return bmp;
+        }
+        catch { return null; }
+    }
+
+    // ── Ad status ────────────────────────────────────────────────────
+
+    private void RefreshAdStatus()
+    {
+        int total = _parsedFiles.Sum(f => f.SuspectedAdEntries.Count);
+        bool active = total > 0 && SkipAdsCheck.IsChecked == true;
+        string adNote = active
+            ? $" — ⚠ {total} suspected ad image{(total == 1 ? "" : "s")} will be skipped"
+            : "";
+        StatusLabel.Text = $"Ready — {_groups.Count} group{(_groups.Count == 1 ? "" : "s")} to merge{adNote}";
     }
 
     // ── Chapter count changed → re-group ────────────────────────────
@@ -254,6 +396,15 @@ public partial class MainWindow : Window
     private void MergeAllInOne_Changed(object sender, RoutedEventArgs e)
     {
         if (_parsedFiles.Count > 0) RefreshGroups();
+    }
+
+    private void SkipAds_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_parsedFiles.Count > 0)
+        {
+            RefreshAdStatus();
+            BuildTree();
+        }
     }
 
     // ── Number-only input ────────────────────────────────────────────
@@ -299,7 +450,8 @@ public partial class MainWindow : Window
 
         try
         {
-            await CbzMerger.MergeAllAsync(_groups, outputFolder, progress, _cts.Token);
+            bool skipAds = SkipAdsCheck.IsChecked == true;
+            await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, progress, _cts.Token);
             ProgressBar.Value = 100;
             StatusLabel.Text = $"Done! {_groups.Count} file{(_groups.Count == 1 ? "" : "s")} created in: {outputFolder}";
 
@@ -342,6 +494,28 @@ public partial class MainWindow : Window
     {
         SourceFolderBox.IsReadOnly = !enabled;
         OutputFolderBox.IsReadOnly = !enabled;
+    }
+
+    // ── Persistence ──────────────────────────────────────────────────
+
+    private void LoadLastFolder()
+    {
+        try
+        {
+            if (File.Exists(LastFolderFile))
+                SourceFolderBox.Text = File.ReadAllText(LastFolderFile).Trim();
+        }
+        catch { }
+    }
+
+    private static void SaveLastFolder(string folder)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LastFolderFile)!);
+            File.WriteAllText(LastFolderFile, folder);
+        }
+        catch { }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

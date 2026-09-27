@@ -12,19 +12,21 @@ public static class CbzMerger
     public static async Task MergeGroupAsync(
         MergeGroup group,
         string outputFolder,
+        bool skipAds,
         IProgress<(int current, int total, string status)>? progress = null,
         CancellationToken ct = default)
     {
         string outputPath = Path.Combine(outputFolder, group.OutputName + ".cbz");
+
+        bool IsIncluded(ZipArchiveEntry e, MangaFile f) =>
+            IsImage(e.Name) && (!skipAds || !f.SuspectedAdEntries.Contains(e.FullName));
 
         // Collect all entries first to know total page count
         var allEntries = new List<(string SourceZip, string EntryName)>();
         foreach (var file in group.Files)
         {
             using var zip = ZipFile.OpenRead(file.FilePath);
-            foreach (var entry in zip.Entries
-                .Where(e => IsImage(e.Name) && e.FullName != file.SuspectedAdEntry)
-                .OrderBy(e => e.Name))
+            foreach (var entry in zip.Entries.Where(e => IsIncluded(e, file)).OrderBy(e => e.Name))
                 allEntries.Add((file.FilePath, entry.FullName));
         }
 
@@ -34,7 +36,6 @@ public static class CbzMerger
         using var outputStream = File.Create(outputPath);
         using var outputZip = new ZipArchive(outputStream, ZipArchiveMode.Create, leaveOpen: false);
 
-        // Group by source zip to avoid reopening repeatedly
         foreach (var file in group.Files)
         {
             ct.ThrowIfCancellationRequested();
@@ -42,7 +43,7 @@ public static class CbzMerger
 
             using var inputZip = ZipFile.OpenRead(file.FilePath);
             var imageEntries = inputZip.Entries
-                .Where(e => IsImage(e.Name) && e.FullName != file.SuspectedAdEntry)
+                .Where(e => IsIncluded(e, file))
                 .OrderBy(e => e.Name)
                 .ToList();
 
@@ -68,6 +69,7 @@ public static class CbzMerger
     public static async Task MergeAllAsync(
         List<MergeGroup> groups,
         string outputFolder,
+        bool skipAds,
         IProgress<(int groupIndex, int groupTotal, int pageIndex, int pageTotal, string status)>? progress = null,
         CancellationToken ct = default)
     {
@@ -81,7 +83,7 @@ public static class CbzMerger
             var pageProgress = new Progress<(int current, int total, string status)>(p =>
                 progress?.Report((g + 1, groups.Count, p.current, p.total, p.status)));
 
-            await MergeGroupAsync(group, outputFolder, pageProgress, ct);
+            await MergeGroupAsync(group, outputFolder, skipAds, pageProgress, ct);
         }
     }
 

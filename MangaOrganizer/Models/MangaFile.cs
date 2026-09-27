@@ -7,7 +7,7 @@ public class MangaFile
     public string SeriesName { get; set; } = string.Empty;
     public int? Volume { get; set; }
     public double? Chapter { get; set; }
-    public string? SuspectedAdEntry { get; set; }
+    public HashSet<string> SuspectedAdEntries { get; set; } = [];
 }
 
 public class MergeGroup
