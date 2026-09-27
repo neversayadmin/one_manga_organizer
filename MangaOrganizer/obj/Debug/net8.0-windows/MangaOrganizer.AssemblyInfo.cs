@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MangaOrganizer")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+e39c318193373d12de46d61828d51063808a716d")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+2215dbc94bb26099d4388507634a7979a6d9fb8c")]
 [assembly: System.Reflection.AssemblyProductAttribute("MangaOrganizer")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Manga CBZ Organizer")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

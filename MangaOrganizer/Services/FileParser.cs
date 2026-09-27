@@ -115,7 +115,7 @@ public static class FileParser
         }
     }
 
-    private static string SanitizeName(string name)
+    internal static string SanitizeName(string name)
     {
         foreach (char c in Path.GetInvalidFileNameChars())
             name = name.Replace(c, '_');

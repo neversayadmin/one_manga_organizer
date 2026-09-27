@@ -18,7 +18,17 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        SourceFolderBox.TextChanged += (_, _) => UpdateScanButton();
+        SourceFolderBox.TextChanged += (_, _) =>
+        {
+            UpdateScanButton();
+            string src = SourceFolderBox.Text.Trim();
+            if (!string.IsNullOrWhiteSpace(src) &&
+                (string.IsNullOrWhiteSpace(OutputFolderBox.Text) ||
+                 OutputFolderBox.Text.TrimEnd('\\', '/').EndsWith("Merged", StringComparison.OrdinalIgnoreCase)))
+            {
+                OutputFolderBox.Text = Path.Combine(src, "Merged");
+            }
+        };
     }
 
     // ── Folder Browse ────────────────────────────────────────────────
@@ -85,6 +95,22 @@ public partial class MainWindow : Window
         int chaptersPerGroup = GetChaptersPerGroup();
         (_mode, _groups) = FileParser.Group(_parsedFiles, chaptersPerGroup);
 
+        if (MergeAllInOneCheck.IsChecked == true && _parsedFiles.Count > 0)
+        {
+            string seriesName = _parsedFiles[0].SeriesName;
+            _groups =
+            [
+                new MergeGroup
+                {
+                    OutputName = FileParser.SanitizeName($"{seriesName} Complete"),
+                    Files = [.. _parsedFiles
+                        .OrderBy(f => f.Volume ?? 0)
+                        .ThenBy(f => f.Chapter ?? 0)
+                        .ThenBy(f => f.FileName)]
+                }
+            ];
+        }
+
         UpdateModePanel();
         BuildTree();
 
@@ -106,7 +132,13 @@ public partial class MainWindow : Window
         ModePanel.Visibility = Visibility.Visible;
         EmptyState.Visibility = Visibility.Collapsed;
 
-        if (_mode == GroupMode.ByVolume)
+        if (MergeAllInOneCheck.IsChecked == true)
+        {
+            ModeLabel.Text = "Single File";
+            ModeIndicator.Background = new SolidColorBrush(Color.FromRgb(0x2E, 0xA0, 0x43));
+            ChaptersPerGroupPanel.Visibility = Visibility.Collapsed;
+        }
+        else if (_mode == GroupMode.ByVolume)
         {
             ModeLabel.Text = "By Volume";
             ModeIndicator.Background = FindResource("AccentBrush") as SolidColorBrush;
@@ -200,8 +232,13 @@ public partial class MainWindow : Window
 
     private void ChaptersPerGroup_Changed(object sender, TextChangedEventArgs e)
     {
-        if (_parsedFiles.Count > 0 && _mode == GroupMode.ByChapterCount)
+        if (_parsedFiles.Count > 0 && _mode == GroupMode.ByChapterCount && MergeAllInOneCheck.IsChecked != true)
             RefreshGroups();
+    }
+
+    private void MergeAllInOne_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_parsedFiles.Count > 0) RefreshGroups();
     }
 
     // ── Number-only input ────────────────────────────────────────────

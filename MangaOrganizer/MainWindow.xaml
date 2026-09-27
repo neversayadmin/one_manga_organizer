@@ -132,6 +132,15 @@
                                Foreground="{StaticResource TextSecondaryBrush}"
                                VerticalAlignment="Center"
                                Margin="16,0,0,0"/>
+
+                    <CheckBox x:Name="MergeAllInOneCheck"
+                              Content="Merge into single CBZ"
+                              FontSize="12"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              VerticalAlignment="Center"
+                              Margin="16,0,0,0"
+                              Checked="MergeAllInOne_Changed"
+                              Unchecked="MergeAllInOne_Changed"/>
                 </StackPanel>
             </Grid>
         </Border>
