@@ -171,6 +171,13 @@ public partial class MainWindow : Window
         return 10;
     }
 
+    private int GetJpegQuality()
+    {
+        if (int.TryParse(QualityBox.Text, out int q) && q >= 1 && q <= 100)
+            return q;
+        return 80;
+    }
+
     // ── Mode Panel ───────────────────────────────────────────────────
 
     private void UpdateModePanel()
@@ -407,6 +414,10 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CompressImages_Changed(object sender, RoutedEventArgs e) =>
+        CompressQualityPanel.Visibility = CompressImagesCheck.IsChecked == true
+            ? Visibility.Visible : Visibility.Collapsed;
+
     // ── Number-only input ────────────────────────────────────────────
 
     private void NumberOnly_PreviewTextInput(object sender, TextCompositionEventArgs e) =>
@@ -440,18 +451,17 @@ public partial class MainWindow : Window
         SetMergingState(true);
 
         _cts = new CancellationTokenSource();
-        var progress = new Progress<(int g, int gt, int p, int pt, string status)>(r =>
+        var progress = new Progress<(int completed, int total, string status)>(r =>
         {
-            double groupFraction = (double)(r.g - 1) / r.gt;
-            double pageFraction = r.pt > 0 ? (double)r.p / r.pt / r.gt : 0;
-            ProgressBar.Value = (groupFraction + pageFraction) * 100;
-            StatusLabel.Text = $"Group {r.g}/{r.gt} — {r.status}";
+            ProgressBar.Value = r.total > 0 ? (double)r.completed / r.total * 100 : 0;
+            StatusLabel.Text = r.status;
         });
 
         try
         {
             bool skipAds = SkipAdsCheck.IsChecked == true;
-            await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, progress, _cts.Token);
+            int? jpegQuality = CompressImagesCheck.IsChecked == true ? GetJpegQuality() : null;
+            await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, jpegQuality, progress, _cts.Token);
             ProgressBar.Value = 100;
             StatusLabel.Text = $"Done! {_groups.Count} file{(_groups.Count == 1 ? "" : "s")} created in: {outputFolder}";
 

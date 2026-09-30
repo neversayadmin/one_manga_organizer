@@ -11,9 +11,9 @@ public static class FileParser
         @"(?:vol(?:ume)?\.?\s*|(?<![a-zA-Z])v(?=[0-9]))(\d+)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
-    // Matches: Ch.001, Ch 1, Chapter 1, c01, #001 — decimal part preserved (e.g. 9.5, 90.1)
+    // Matches: Ch.001, Ch 1, Chapter 1, c01, #001, Capitolo 1, Cap.1, Capítulo 1 — decimal part preserved (e.g. 9.5)
     private static readonly Regex ChapterRegex = new(
-        @"(?:ch(?:apter)?\.?\s*|(?<![a-zA-Z])c(?=[0-9])|#)(\d+(?:[.,]\d+)?)",
+        @"(?:ch(?:apter)?\.?\s*|cap(?:itol[ao]|[íi]tulo)?\.?\s*|(?<![a-zA-Z])c(?=[0-9])|#)(\d+(?:[.,]\d+)?)",
         RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
     /// <summary>
@@ -74,12 +74,16 @@ public static class FileParser
                 .ThenBy(g => g.Key.Vol)
                 .Select(g =>
                 {
-                    string volLabel = $"Vol.{g.Key.Vol:D2}";
-                    string outputName = $"{g.Key.Series} {volLabel}".Trim();
+                    var ordered = g.OrderBy(f => f.Chapter ?? 0).ThenBy(f => f.FileName, NaturalComparer.Instance).ToList();
+                    var first = ordered.First();
+                    var last = ordered.Last();
+                    string outputName = (first.Chapter.HasValue && last.Chapter.HasValue)
+                        ? $"{g.Key.Series} - {(int)first.Chapter}_{(int)last.Chapter}"
+                        : $"{g.Key.Series} - Vol.{g.Key.Vol:D2}";
                     return new MergeGroup
                     {
                         OutputName = SanitizeName(outputName),
-                        Files = [.. g.OrderBy(f => f.Chapter ?? 0).ThenBy(f => f.FileName, NaturalComparer.Instance)]
+                        Files = ordered
                     };
                 })
                 .ToList();
@@ -101,8 +105,8 @@ public static class FileParser
                 var last = batch.Last();
 
                 string outputName = (first.Chapter.HasValue && last.Chapter.HasValue)
-                    ? $"{first.SeriesName} Ch.{first.Chapter:000}-{last.Chapter:000}"
-                    : $"{first.SeriesName} Part {i / chaptersPerGroup + 1:D2}";
+                    ? $"{first.SeriesName} - {(int)first.Chapter}_{(int)last.Chapter}"
+                    : $"{first.SeriesName} - Part {i / chaptersPerGroup + 1:D2}";
 
                 groups.Add(new MergeGroup
                 {
