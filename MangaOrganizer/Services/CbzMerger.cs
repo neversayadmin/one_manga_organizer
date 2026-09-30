@@ -10,7 +10,7 @@ public static class CbzMerger
     private static readonly HashSet<string> ImageExtensions =
         [".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".avif", ".tiff", ".tif"];
 
-    public static async Task MergeGroupAsync(
+    public static async Task<int> MergeGroupAsync(
         MergeGroup group,
         string outputFolder,
         bool skipAds,
@@ -24,13 +24,10 @@ public static class CbzMerger
             IsImage(e.Name) && (!skipAds || !f.SuspectedAdEntries.Contains(e.FullName));
 
         if (jpegQuality.HasValue)
-        {
-            await MergeGroupWithCompressionAsync(group, outputPath, IsIncluded, jpegQuality.Value, progress, ct);
-        }
-        else
-        {
-            await MergeGroupDirectAsync(group, outputPath, IsIncluded, progress, ct);
-        }
+            return await MergeGroupWithCompressionAsync(group, outputPath, IsIncluded, jpegQuality.Value, progress, ct);
+
+        await MergeGroupDirectAsync(group, outputPath, IsIncluded, progress, ct);
+        return 0;
     }
 
     // No compression: stream directly from source ZIPs to output ZIP.
@@ -75,7 +72,8 @@ public static class CbzMerger
     }
 
     // With JPEG compression: read all pages to memory, compress in parallel, write sequentially.
-    private static async Task MergeGroupWithCompressionAsync(
+    // Returns the number of images that could not be compressed and were kept as-is.
+    private static async Task<int> MergeGroupWithCompressionAsync(
         MergeGroup group,
         string outputPath,
         Func<ZipArchiveEntry, MangaFile, bool> isIncluded,
@@ -114,12 +112,15 @@ public static class CbzMerger
         // Compress all pages in parallel (CPU-bound, thread-safe)
         var compressed = new byte[total][];
         int done = 0;
+        int failed = 0;
         await Parallel.ForEachAsync(
             Enumerable.Range(0, total),
             new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount, CancellationToken = ct },
             (i, _) =>
             {
-                compressed[i] = CompressToJpeg(new MemoryStream(rawBytes[i]), quality);
+                bool ok;
+                (compressed[i], ok) = CompressToJpeg(new MemoryStream(rawBytes[i]), quality);
+                if (!ok) Interlocked.Increment(ref failed);
                 rawBytes[i] = []; // release raw memory as we go
                 int n = Interlocked.Increment(ref done);
                 progress?.Report((n, total, $"Compressing {n}/{total}…"));
@@ -137,9 +138,11 @@ public static class CbzMerger
             using var dst = newEntry.Open();
             await dst.WriteAsync(compressed[i], ct);
         }
+
+        return failed;
     }
 
-    public static async Task MergeAllAsync(
+    public static async Task<int> MergeAllAsync(
         List<MergeGroup> groups,
         string outputFolder,
         bool skipAds,
@@ -153,6 +156,7 @@ public static class CbzMerger
         // UI SynchronizationContext and therefore run serially — no locking needed.
         int totalPages = 0;
         int completedPages = 0;
+        int totalFailed = 0;
 
         int parallelGroups = Math.Max(1, Environment.ProcessorCount / 2);
 
@@ -174,18 +178,34 @@ public static class CbzMerger
                     progress?.Report((completedPages, totalPages, p.status));
                 });
 
-                await MergeGroupAsync(group, outputFolder, skipAds, jpegQuality, pageProgress, ct);
+                int failed = await MergeGroupAsync(group, outputFolder, skipAds, jpegQuality, pageProgress, ct);
+                Interlocked.Add(ref totalFailed, failed);
             });
+
+        return totalFailed;
     }
 
-    private static byte[] CompressToJpeg(Stream imageStream, int quality)
+    // Returns (compressed bytes, true) on success, (original bytes, false) on failure.
+    private static (byte[] Data, bool Compressed) CompressToJpeg(Stream imageStream, int quality)
     {
-        var decoder = BitmapDecoder.Create(imageStream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
-        var encoder = new JpegBitmapEncoder { QualityLevel = quality };
-        encoder.Frames.Add(BitmapFrame.Create(decoder.Frames[0]));
-        using var ms = new MemoryStream();
-        encoder.Save(ms);
-        return ms.ToArray();
+        using var raw = new MemoryStream();
+        imageStream.CopyTo(raw);
+        byte[] rawBytes = raw.ToArray();
+
+        try
+        {
+            raw.Position = 0;
+            var decoder = BitmapDecoder.Create(raw, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            var encoder = new JpegBitmapEncoder { QualityLevel = quality };
+            encoder.Frames.Add(BitmapFrame.Create(decoder.Frames[0]));
+            using var ms = new MemoryStream();
+            encoder.Save(ms);
+            return (ms.ToArray(), true);
+        }
+        catch
+        {
+            return (rawBytes, false);
+        }
     }
 
     private static bool IsImage(string name) =>

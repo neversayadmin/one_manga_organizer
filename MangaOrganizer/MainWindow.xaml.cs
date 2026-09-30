@@ -461,12 +461,15 @@ public partial class MainWindow : Window
         {
             bool skipAds = SkipAdsCheck.IsChecked == true;
             int? jpegQuality = CompressImagesCheck.IsChecked == true ? GetJpegQuality() : null;
-            await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, jpegQuality, progress, _cts.Token);
+            int compressionFailures = await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, jpegQuality, progress, _cts.Token);
             ProgressBar.Value = 100;
             StatusLabel.Text = $"Done! {_groups.Count} file{(_groups.Count == 1 ? "" : "s")} created in: {outputFolder}";
 
+            string failNote = compressionFailures > 0
+                ? $"\n\n⚠ {compressionFailures} image{(compressionFailures == 1 ? "" : "s")} could not be compressed and were kept in their original format."
+                : "";
             var open = MessageBox.Show(
-                $"Successfully merged {_groups.Count} group{(_groups.Count == 1 ? "" : "s")}.\n\nOpen output folder?",
+                $"Successfully merged {_groups.Count} group{(_groups.Count == 1 ? "" : "s")}.{failNote}\n\nOpen output folder?",
                 "Merge Complete", MessageBoxButton.YesNo, MessageBoxImage.Information);
 
             if (open == MessageBoxResult.Yes)
