@@ -31,8 +31,12 @@ dotnet publish MangaOrganizer/MangaOrganizer.csproj -c Release -r win-x64 --self
 1. Click **Browse** to select the folder containing your `.cbz` chapter files
 2. Click **Scan** — the app detects grouping mode and previews all merge groups in a tree
 3. Optionally adjust **Chapters per group** (only visible in chapter-count mode)
-4. Select an output folder (defaults to a `Merged/` subfolder inside the source folder)
-5. Click **Merge All** — progress is shown per group; merge can be cancelled mid-run
+4. Enable optional processing:
+   - **Skip detected ads** — drops suspected ad/promo pages automatically
+   - **Compress images** — re-encodes all pages as JPEG at the specified quality (1–100, default 80)
+   - **Optimize for e-reader** — resizes any page whose longest side exceeds the specified limit (default 1448 px, matching the Kobo Clara BW screen); images are saved as JPEG at quality 95 (or the compress quality if both options are on). Fixes blank-page issues on e-readers caused by oversized scans.
+5. Select an output folder (defaults to a `Merged/` subfolder inside the source folder)
+6. Click **Merge All** — progress is shown per group; merge can be cancelled mid-run
 
 On completion, you can open the output folder directly from the success dialog.
 

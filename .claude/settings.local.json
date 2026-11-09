@@ -4,7 +4,12 @@
       "Bash(dotnet build *)",
       "Bash(ls \"D:\\\\torrent\\\\manga\\\\Spy x Family\" | head -30)",
       "Read(//d/torrent/manga/Spy x Family/**)",
-      "Bash(python3 -c ' *)"
+      "Bash(python3 -c ' *)",
+      "Read(//c/Users/rochi/Downloads/**)",
+      "Bash(python -c \"from PIL import Image; print\\('pillow ok'\\)\")",
+      "Bash(python3 -c \"from PIL import Image; print\\('pillow ok'\\)\")",
+      "Bash(python -c \"import pillow_heif; print\\('pillow-heif ok'\\)\")",
+      "Bash(python -c \"from PIL import Image; img = Image.open\\('/c/Users/rochi/Downloads/IMG_9740.HEIC'\\); print\\(img.size\\)\")"
     ]
   }
 }

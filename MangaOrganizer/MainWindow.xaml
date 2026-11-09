@@ -181,6 +181,31 @@
                                    VerticalAlignment="Center"
                                    Margin="3,0,0,0"/>
                     </StackPanel>
+
+                    <CheckBox x:Name="OptimizeCheck"
+                              Content="Optimize for e-reader"
+                              FontSize="12"
+                              Foreground="{StaticResource TextPrimaryBrush}"
+                              VerticalAlignment="Center"
+                              Margin="16,0,0,0"
+                              Checked="Optimize_Changed"
+                              Unchecked="Optimize_Changed"/>
+
+                    <StackPanel x:Name="OptimizePxPanel"
+                                Orientation="Horizontal"
+                                Visibility="Collapsed"
+                                Margin="8,0,0,0">
+                        <TextBlock Text="Max px:"
+                                   FontSize="13"
+                                   Foreground="{StaticResource TextPrimaryBrush}"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,6,0"/>
+                        <TextBox x:Name="MaxPxBox"
+                                 Width="64"
+                                 Text="1448"
+                                 VerticalContentAlignment="Center"
+                                 PreviewTextInput="NumberOnly_PreviewTextInput"/>
+                    </StackPanel>
                 </StackPanel>
             </Grid>
         </Border>

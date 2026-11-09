@@ -1,5 +1,6 @@
 using System.IO;
 using System.IO.Compression;
+using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using MangaOrganizer.Models;
 
@@ -15,6 +16,7 @@ public static class CbzMerger
         string outputFolder,
         bool skipAds,
         int? jpegQuality = null,
+        int? maxPx = null,
         IProgress<(int current, int total, string status)>? progress = null,
         CancellationToken ct = default)
     {
@@ -23,8 +25,8 @@ public static class CbzMerger
         bool IsIncluded(ZipArchiveEntry e, MangaFile f) =>
             IsImage(e.Name) && (!skipAds || !f.SuspectedAdEntries.Contains(e.FullName));
 
-        if (jpegQuality.HasValue)
-            return await MergeGroupWithCompressionAsync(group, outputPath, IsIncluded, jpegQuality.Value, progress, ct);
+        if (jpegQuality.HasValue || maxPx.HasValue)
+            return await MergeGroupWithCompressionAsync(group, outputPath, IsIncluded, jpegQuality ?? 95, maxPx ?? 0, progress, ct);
 
         await MergeGroupDirectAsync(group, outputPath, IsIncluded, progress, ct);
         return 0;
@@ -71,13 +73,14 @@ public static class CbzMerger
         }
     }
 
-    // With JPEG compression: read all pages to memory, compress in parallel, write sequentially.
-    // Returns the number of images that could not be compressed and were kept as-is.
+    // With JPEG compression/resize: read all pages to memory, process in parallel, write sequentially.
+    // Returns the number of images that could not be processed and were kept as-is.
     private static async Task<int> MergeGroupWithCompressionAsync(
         MergeGroup group,
         string outputPath,
         Func<ZipArchiveEntry, MangaFile, bool> isIncluded,
         int quality,
+        int maxPx,
         IProgress<(int current, int total, string status)>? progress,
         CancellationToken ct)
     {
@@ -119,7 +122,7 @@ public static class CbzMerger
             (i, _) =>
             {
                 bool ok;
-                (compressed[i], ok) = CompressToJpeg(new MemoryStream(rawBytes[i]), quality);
+                (compressed[i], ok) = CompressToJpeg(new MemoryStream(rawBytes[i]), quality, maxPx);
                 if (!ok) Interlocked.Increment(ref failed);
                 rawBytes[i] = []; // release raw memory as we go
                 int n = Interlocked.Increment(ref done);
@@ -147,6 +150,7 @@ public static class CbzMerger
         string outputFolder,
         bool skipAds,
         int? jpegQuality = null,
+        int? maxPx = null,
         IProgress<(int pagesCompleted, int pagesTotal, string status)>? progress = null,
         CancellationToken ct = default)
     {
@@ -178,7 +182,7 @@ public static class CbzMerger
                     progress?.Report((completedPages, totalPages, p.status));
                 });
 
-                int failed = await MergeGroupAsync(group, outputFolder, skipAds, jpegQuality, pageProgress, ct);
+                int failed = await MergeGroupAsync(group, outputFolder, skipAds, jpegQuality, maxPx, pageProgress, ct);
                 Interlocked.Add(ref totalFailed, failed);
             });
 
@@ -186,7 +190,7 @@ public static class CbzMerger
     }
 
     // Returns (compressed bytes, true) on success, (original bytes, false) on failure.
-    private static (byte[] Data, bool Compressed) CompressToJpeg(Stream imageStream, int quality)
+    private static (byte[] Data, bool Compressed) CompressToJpeg(Stream imageStream, int quality, int maxPx)
     {
         using var raw = new MemoryStream();
         imageStream.CopyTo(raw);
@@ -196,8 +200,16 @@ public static class CbzMerger
         {
             raw.Position = 0;
             var decoder = BitmapDecoder.Create(raw, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            BitmapSource source = decoder.Frames[0];
+
+            if (maxPx > 0 && (source.PixelWidth > maxPx || source.PixelHeight > maxPx))
+            {
+                double scale = Math.Min((double)maxPx / source.PixelWidth, (double)maxPx / source.PixelHeight);
+                source = new TransformedBitmap(source, new ScaleTransform(scale, scale));
+            }
+
             var encoder = new JpegBitmapEncoder { QualityLevel = quality };
-            encoder.Frames.Add(BitmapFrame.Create(decoder.Frames[0]));
+            encoder.Frames.Add(BitmapFrame.Create(source));
             using var ms = new MemoryStream();
             encoder.Save(ms);
             return (ms.ToArray(), true);

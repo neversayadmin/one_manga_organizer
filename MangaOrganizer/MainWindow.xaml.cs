@@ -178,6 +178,13 @@ public partial class MainWindow : Window
         return 80;
     }
 
+    private int GetMaxPx()
+    {
+        if (int.TryParse(MaxPxBox.Text, out int px) && px >= 100)
+            return px;
+        return 1448;
+    }
+
     // ── Mode Panel ───────────────────────────────────────────────────
 
     private void UpdateModePanel()
@@ -418,6 +425,10 @@ public partial class MainWindow : Window
         CompressQualityPanel.Visibility = CompressImagesCheck.IsChecked == true
             ? Visibility.Visible : Visibility.Collapsed;
 
+    private void Optimize_Changed(object sender, RoutedEventArgs e) =>
+        OptimizePxPanel.Visibility = OptimizeCheck.IsChecked == true
+            ? Visibility.Visible : Visibility.Collapsed;
+
     // ── Number-only input ────────────────────────────────────────────
 
     private void NumberOnly_PreviewTextInput(object sender, TextCompositionEventArgs e) =>
@@ -461,7 +472,8 @@ public partial class MainWindow : Window
         {
             bool skipAds = SkipAdsCheck.IsChecked == true;
             int? jpegQuality = CompressImagesCheck.IsChecked == true ? GetJpegQuality() : null;
-            int compressionFailures = await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, jpegQuality, progress, _cts.Token);
+            int? maxPx = OptimizeCheck.IsChecked == true ? GetMaxPx() : null;
+            int compressionFailures = await CbzMerger.MergeAllAsync(_groups, outputFolder, skipAds, jpegQuality, maxPx, progress, _cts.Token);
             ProgressBar.Value = 100;
             StatusLabel.Text = $"Done! {_groups.Count} file{(_groups.Count == 1 ? "" : "s")} created in: {outputFolder}";
 
